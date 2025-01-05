@@ -1,0 +1,208 @@
+---
+title: "Untitled"
+output: html_document
+date: "2023-09-30"
+---
+## Project title = EDA on dataset of heart attack risks on people and comparing classification models
+## Project value = This model can be used by big pharma companies and government health ministries to plan for preventibe measures in detecting heart attack among people. Hospitals can save time by applying preventive measures and tailor treatments to suit an individual based on his condition, genetics, etc
+
+## Data source https://www.kaggle.com/datasets/iamsouravbanerjee/heart-attack-prediction-dataset?select=heart_attack_prediction_dataset.csv
+
+## Xgboost code tutorial on https://youtu.be/OJcFCs7Toe4?si=Qm0kZUA7e1u8Of7u
+
+
+## Preconcieved notions to be tested or that can be potential features
+### - age, lifestyle, and genetic history are big factors of heart attack
+### - Some personal details might be an irrelevant factor
+## Load the library needed
+```{r}
+# use tidyverse to pipe and read csv
+library(tidyverse)
+# use to make correlation plot
+library(corrplot)
+# make a random forest model
+library(randomForest)
+# amke a gradient boost model
+```
+## Import dataset
+```{r}
+# load the dataset
+df <- read_csv('heart_attack_prediction_dataset.csv')
+names(df) <- gsub(" ","_",names(df))
+```
+## As we can see, our data has over 8000 rows and 26 columns
+## The 1st step of EDA, we will look at summary in our data and identify the distribution of the numeric value in the data
+```{r}
+summary(df)
+```
+
+## As we can see, most numerical values are evenly skewed since most numeric data has a mean value that is close to the median value. However there are data like Obesity,Alcohol Consumption, and Diabetes are left skew since the mean is lower than the median
+
+## We want to see the spread of non numeric values
+```{r}
+data_cat <- df[sapply(df,is.character)]
+data_cat <- data_cat[-1]
+
+sex_count <- data_cat%>%
+  group_by(Sex)%>%
+  summarize(number_rows = n())
+print(sex_count)
+
+
+sex_count <- data_cat%>%
+  group_by(Sex)%>%
+  summarize(number_rows = n())
+print(sex_count)
+
+diet_count <- data_cat%>%
+  group_by(Diet)%>%
+  summarize(number_rows = n())
+print(diet_count)
+
+country_count <- data_cat%>%
+  group_by(Country)%>%
+  summarize(number_rows = n())
+print(country_count)
+
+continent_count <- data_cat%>%
+  group_by(Continent)%>%
+  summarize(number_rows = n())
+print(continent_count)
+```
+
+## EDA
+```{r}
+# first we look at gender and heart attack
+library(ggplot2)
+
+#make a df with only gender and heart attack risk
+df_gender_risk <- df%>%
+  select(c('Sex','Heart_Attack_Risk'))
+
+grouped <- df_gender_risk%>%
+  group_by(Sex,Heart_Attack_Risk)%>%
+  summarise(number_rows = n())
+
+# factorize and combine
+grouped$Sex <- factor(grouped$Sex,levels=c('Male','Female'))
+grouped$Heart_Attack_Risk <- factor(grouped$Heart_Attack_Risk,levels=c(0,1))
+
+grouped$GenderCat <- paste(grouped$Sex, grouped$Heart_Attack_Risk, sep = ", ")
+
+# create barchart
+grouped %>%
+  ggplot(aes(x = GenderCat, y = number_rows))+
+  geom_bar(stat = 'Identity')
+```
+
+We can see that males have a higher ratio of high risk and low risk compared to woman and males are 2x more likely to get heart attack compared to females
+
+
+
+## Data cleaning
+```{r}
+# blood pressure is still weird in notation so we split to sistol and diaston on the fielsd
+df <- df%>%
+  separate(`Blood_Pressure`, into = c('systol','diastol'), sep ='/')
+
+df$systol <- as.numeric(df$systol)
+df$diastol <- as.numeric(df$diastol)
+
+
+```
+
+```{r}
+#drop uneccesary column
+df <- df%>%
+  select(-Hemisphere,-`Patient_ID`,-Country,-Income)
+```
+
+## Change categoricals to numeric values
+```{r}
+cat_names <- names(df[sapply(df,is.character)])
+
+df[cat_names] <- lapply(df[cat_names], function(x) as.numeric(as.factor(x)))
+
+
+```
+
+
+
+## Since the target variable is not categorical and we are not using time series. We are using classification, the outcomes we want to predict are also binary 0 and 1
+
+
+```{r}
+df$`Heart_Attack_Risk`<- as.factor(df$`Heart_Attack_Risk`)
+colnames(df)[23] = 'output'
+
+```
+
+```{r}
+set.seed(1)
+
+data_set_size = floor(nrow(df)*0.70)
+index <- sample(1:nrow(df), size = data_set_size)
+train <- df[index,]
+test <- df[-index,]
+
+```
+
+## Then we do the random forrest
+```{r}
+rf <- randomForest(output ~. ,data = train,mtry = 4, ntree = 10, importance =TRUE)
+
+rf
+```
+## Results of rf
+```{r}
+result <- data.frame(test$output,predict(rf,test[,1:23],type = 'response'))
+
+summary(result)
+```
+
+```{r}
+summary(result)
+```
+
+
+## Do gradient boose
+```{r}
+library(xgboost)
+
+```
+## Gradient booste, first we make the data to the matrix
+```{r}
+train_x <-model.matrix(output ~.,data = train)
+test_x <- model.matrix(output ~., data=test)
+true_label <- as.numeric(as.character(test$output))
+```
+
+```{r}
+labels <- as.numeric(as.character(train$output)) - 1
+matrix <- data.matrix(train)
+
+model_gradboost <- xgboost(data = data.matrix(train_x[,-1]),
+                                              label = as.numeric(as.character(train$output)),
+                                              eta = 0.1,
+                                              max_depth = 10,
+                                              nrounds = 15,
+                                              objective = 'binary:logistic')
+
+
+```
+
+# we display the result on a certain treshold
+```{r}
+result <- predict(model_gradboost,data.matrix(test_x[,-1]))
+
+result_labels <- as.numeric(result > 0.5)
+```
+
+
+# we use caret for xgboost since it doesnt show conf matrix https://www.geeksforgeeks.org/visualize-confusion-matrix-using-caret-package-in-r/
+```{r}
+library(caret)
+conf_matrix <- confusionMatrix(as.factor(result_labels),as.factor(true_label))
+print(conf_matrix)
+```
+# comparing the 2 model, they have almost similar performance by counting the f score by using the, however this may be happened because for xgboost we choose on a certain treshold, however if we change the treshold, xgboost may do better
