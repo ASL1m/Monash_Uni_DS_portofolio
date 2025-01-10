@@ -1,1 +1,9 @@
+# Python data wrangling group assignment
+## Cleaning data of fabricated food deliveries 
+we are given a dirty dataset, however we needed to find the mistakes and fix them. I and a group member used data exploration techniques to identify and resolve data issues
 
+## Fixing outliers using a simple linear regression
+We are given housing median price with outliers
+
+## Result
+we performed relatively well (80/100), with a few missed steps in the data cleaning step
